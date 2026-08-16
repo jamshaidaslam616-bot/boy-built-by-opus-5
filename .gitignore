@@ -1,0 +1,20 @@
+# Secrets — belt and braces. This project never used credentials (the broker adapter
+# is attach-only by design), but an ignore rule costs nothing and a leak is forever.
+.env
+.env.*
+*.key
+*credential*
+
+# Virtualenv and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Cached market data — re-derivable from the broker in minutes via
+# scripts/p11_fetch_universe.py, and 13MB of binary that git cannot diff usefully.
+data/*.parquet
+data/*.txt
+
+# Scratch
+reports/*.log
