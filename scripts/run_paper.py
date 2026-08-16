@@ -136,14 +136,24 @@ def main() -> int:
                       "side flipped" if flipping else
                       "halted" if state.halted else
                       f"approaching the {broker.FREE_DAYS}-day financing-free window")
+            # Capture the size and entry BEFORE closing — the position object is gone
+            # afterwards, and a close recorded with lots=0 makes the trade
+            # unreconstructable from the journal, which is the journal's only job.
+            closing = broker.positions[symbol]
+            lots, entry = closing.lots, closing.entry_price
+            days = closing.days_held(now)
+
             pnl, cost = broker.close(symbol, prices[symbol])
             closed += 1
-            print(f"  closed {symbol:<9} P&L {pnl:>+9.2f}  cost {cost:>6.2f}  ({reason})")
+            print(f"  closed {symbol:<9} {lots:>+7.2f} lots  P&L {pnl:>+9.2f}  "
+                  f"cost {cost:>6.2f}  held {days}d  ({reason})")
             journal.record_decision(Decision(
                 bar_utc=bar_utc, symbol=symbol, action="CLOSE", price=prices[symbol],
-                equity=broker.equity, reason=reason, inputs={"pnl": pnl, "cost": cost},
+                lots=lots, equity=broker.equity, reason=reason,
+                inputs={"pnl": pnl, "cost": cost, "entry_price": entry, "days_held": days},
             ))
-            journal.record_fill(bar_utc, symbol, "CLOSE", 0.0, prices[symbol], cost, "PAPER")
+            journal.record_fill(bar_utc, symbol, "SELL" if lots > 0 else "BUY",
+                                abs(lots), prices[symbol], cost, "PAPER")
 
         print(f"\n  {'rank':>5} {'symbol':<9} {'weight':>8} {'120d ret':>10} "
               f"{'lots':>10}  status")
