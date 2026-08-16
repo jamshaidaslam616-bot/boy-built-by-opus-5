@@ -181,13 +181,19 @@ def position_size(
 # drawdown fits inside the owner's 20% halt. That is the same limit, applied where it
 # actually describes the risk being taken.
 BOOK_VOL_TARGET = 0.07
-MAX_LEG_RISK_PCT = 1.5
-"""Per-leg ceiling, as a share of equity at risk to a two-sigma move.
+MAX_LEG_NOTIONAL_MULTIPLE = 2.0
+"""Hard ceiling on one leg's notional, as a multiple of account equity.
 
-A cap rather than a target. Volatility targeting alone would let one market with a
-collapsed volatility estimate take an unbounded position; this makes that impossible.
-It is deliberately generous relative to the old 0.5%, because on a balanced book a
-single leg is not a single bet — but it is finite, which is the point.
+**It is a plain notional cap on purpose.** A first version expressed this ceiling as
+a share of equity risked to a two-sigma move, which divides by volatility — so the
+cap GREW as volatility fell, tracking the very quantity it existed to bound. It never
+bound anything, and a test caught it.
+
+Volatility targeting divides by volatility, so an instrument whose volatility
+estimate collapses toward zero demands an unbounded position. Only a limit that does
+not itself scale with volatility can stop that. Typical legs run near 0.2x equity, so
+2.0x is generous in normal conditions and finite in broken ones — which is the whole
+job.
 """
 
 
@@ -228,9 +234,9 @@ def book_leg_size(
     leg_vol_usd = state.equity * book_vol_target / (n_legs ** 0.5) * abs(weight) * n_legs
     notional = leg_vol_usd / annual_vol
 
-    # The per-leg ceiling, expressed in the same units so the two are comparable.
-    max_notional = state.equity * (MAX_LEG_RISK_PCT / 100.0) / (2.0 * annual_vol / (252 ** 0.5))
-    notional = min(notional, max_notional)
+    # Ceiling on notional directly — see MAX_LEG_NOTIONAL_MULTIPLE for why it must not
+    # be expressed in volatility-scaled units.
+    notional = min(notional, state.equity * MAX_LEG_NOTIONAL_MULTIPLE)
 
     raw_lots = notional / (contract_size * price)
     lots = int(raw_lots / volume_step) * volume_step      # round DOWN, never up
@@ -249,9 +255,19 @@ def book_leg_size(
 
 
 def describe_limits() -> str:
+    """What actually constrains the book, stated the way it now works.
+
+    ``MAX_CONCURRENT_POSITIONS`` deliberately does not appear. It governs
+    ``position_size``, the single-position path, where three open trades are three
+    separate directional bets. A cross-sectional book is one bet expressed across
+    many legs, and it is constrained by book volatility and the drawdown halt
+    instead. Printing a "max 3 positions" limit next to a thirteen-leg book would be
+    describing a rule that is not the one in force.
+    """
     return (
-        f"risk/decision {RISK_PER_DECISION_PCT}% (book-level, split by weight) · "
-        f"daily stop {DAILY_LOSS_STOP_PCT}% · max drawdown {MAX_DRAWDOWN_PCT}% · "
-        f"max {MAX_CONCURRENT_POSITIONS} positions · "
+        f"book volatility target {BOOK_VOL_TARGET:.0%} · "
+        f"per-leg ceiling {MAX_LEG_NOTIONAL_MULTIPLE:.1f}x equity notional · "
+        f"daily stop {DAILY_LOSS_STOP_PCT}% · "
+        f"max drawdown {MAX_DRAWDOWN_PCT}% (halt does not self-clear) · "
         f"martingale/grid/averaging-down refused in code"
     )
