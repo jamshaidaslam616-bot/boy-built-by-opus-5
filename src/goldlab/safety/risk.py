@@ -180,7 +180,22 @@ def position_size(
 # What binds instead is the BOOK's volatility, targeted so that its 95th-percentile
 # drawdown fits inside the owner's 20% halt. That is the same limit, applied where it
 # actually describes the risk being taken.
-BOOK_VOL_TARGET = 0.07
+BOOK_VOL_TARGET = 0.036
+"""Book volatility target, calibrated from the bootstrap rather than chosen.
+
+Set to 7% initially by analogy with the single-market work. P20 replayed the actual
+production path and measured the 95th-percentile drawdown at that size as **38.69%**
+— nearly double the owner's 20% halt. A book sized that way would trip its own halt
+as a matter of routine, which makes the halt noise rather than a control.
+
+    20.0 / 38.69 x 0.07 = 0.036
+
+So 3.6%, which puts the p95 drawdown just inside the limit with no headroom to
+spare. Note this is the 95th percentile of resampled paths, not what one history
+happened to produce — F13 measured that a single path understates it by about 1.58x,
+and sizing to the observed figure would breach the halt in roughly half of equally
+plausible futures.
+"""
 MAX_LEG_NOTIONAL_MULTIPLE = 2.0
 """Hard ceiling on one leg's notional, as a multiple of account equity.
 
