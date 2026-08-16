@@ -1,0 +1,100 @@
+{
+  "costs_paid": 11.018597327000002,
+  "equity": 99988.98140267299,
+  "peak_equity": 100000.0,
+  "positions": {
+    "BTCUSD": {
+      "contract_size": 1.0,
+      "entry_price": 63004.96,
+      "lots": -0.04,
+      "opened_utc": "2026-08-16T07:00:54.183186+00:00",
+      "symbol": "BTCUSD"
+    },
+    "ETHUSD": {
+      "contract_size": 1.0,
+      "entry_price": 1878.67,
+      "lots": -0.74,
+      "opened_utc": "2026-08-16T07:00:54.183186+00:00",
+      "symbol": "ETHUSD"
+    },
+    "NZDUSD": {
+      "contract_size": 100000.0,
+      "entry_price": 0.58908,
+      "lots": -0.89,
+      "opened_utc": "2026-08-16T07:00:54.183186+00:00",
+      "symbol": "NZDUSD"
+    },
+    "UKOIL": {
+      "contract_size": 1000.0,
+      "entry_price": 87.222,
+      "lots": 0.01,
+      "opened_utc": "2026-08-16T07:00:54.183186+00:00",
+      "symbol": "UKOIL"
+    },
+    "US30": {
+      "contract_size": 1.0,
+      "entry_price": 53723.0,
+      "lots": 0.35,
+      "opened_utc": "2026-08-16T07:00:54.183186+00:00",
+      "symbol": "US30"
+    },
+    "US500": {
+      "contract_size": 1.0,
+      "entry_price": 7788.78,
+      "lots": 2.21,
+      "opened_utc": "2026-08-16T07:00:54.183186+00:00",
+      "symbol": "US500"
+    },
+    "USDCHF": {
+      "contract_size": 100000.0,
+      "entry_price": 0.81331,
+      "lots": 0.99,
+      "opened_utc": "2026-08-16T07:00:54.183186+00:00",
+      "symbol": "USDCHF"
+    },
+    "USDSEK": {
+      "contract_size": 100000.0,
+      "entry_price": 9.524930000000001,
+      "lots": 0.05,
+      "opened_utc": "2026-08-16T07:00:54.183186+00:00",
+      "symbol": "USDSEK"
+    },
+    "USOIL": {
+      "contract_size": 1000.0,
+      "entry_price": 81.528,
+      "lots": 0.01,
+      "opened_utc": "2026-08-16T07:00:54.183186+00:00",
+      "symbol": "USOIL"
+    },
+    "USTEC": {
+      "contract_size": 1.0,
+      "entry_price": 30063.75,
+      "lots": 0.16,
+      "opened_utc": "2026-08-16T07:00:54.183186+00:00",
+      "symbol": "USTEC"
+    },
+    "XAUUSD": {
+      "contract_size": 100.0,
+      "entry_price": 4376.013,
+      "lots": -0.01,
+      "opened_utc": "2026-08-16T07:00:54.183186+00:00",
+      "symbol": "XAUUSD"
+    },
+    "XPDUSD": {
+      "contract_size": 100.0,
+      "entry_price": 1317.84,
+      "lots": -0.01,
+      "opened_utc": "2026-08-16T07:00:54.183186+00:00",
+      "symbol": "XPDUSD"
+    },
+    "XPTUSD": {
+      "contract_size": 100.0,
+      "entry_price": 1749.56,
+      "lots": -0.01,
+      "opened_utc": "2026-08-16T07:00:54.183186+00:00",
+      "symbol": "XPTUSD"
+    }
+  },
+  "realised": 0.0,
+  "saved_utc": "2026-08-16T07:00:55+00:00"
+}

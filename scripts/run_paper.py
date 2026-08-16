@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import MetaTrader5 as mt5  # noqa: E402
 
 from goldlab.broker import mt5_read as br  # noqa: E402
-from goldlab.execution.paper import PaperBroker  # noqa: E402
+from goldlab.execution import state as paper_state  # noqa: E402
 from goldlab.journal.store import Decision, Journal  # noqa: E402
 from goldlab.safety import risk  # noqa: E402
 from goldlab.strategy import production as prod  # noqa: E402
@@ -99,11 +99,51 @@ def main() -> int:
         print(f"\n  decision bar {bar_utc:%Y-%m-%d} · {len(panel):,} bars available")
 
         targets = prod.compute_targets(panel)
-        state = risk.RiskState(equity=CAPITAL, peak_equity=CAPITAL)
+
+        # Restore the book. Without this the runner opened a fresh set of positions
+        # every day, never closed anything, and reset equity to the starting capital —
+        # producing a journal that recorded activity and measured nothing.
+        broker = paper_state.load(STATE, CAPITAL)
+        marked_open = broker.mark_to_market(prices)
+        peak = paper_state.peak_equity(STATE, marked_open)
+
+        state = risk.RiskState(equity=broker.equity, peak_equity=peak,
+                               unrealised=marked_open - broker.equity,
+                               open_positions=len(broker.positions))
         state = risk.clear_daily_halt(state, bar_utc.date())
         state = risk.check_halts(state)
 
-        broker = PaperBroker(equity=CAPITAL)
+        print(f"\n  carried in: {len(broker.positions)} open legs · "
+              f"equity ${broker.equity:,.2f} · marked ${marked_open:,.2f} · "
+              f"peak ${peak:,.2f} · drawdown {state.drawdown_pct:.2f}%")
+        if state.halted:
+            print(f"  *** HALTED: {state.halt_reason} ***")
+
+        # --- close what should no longer be held ---
+        wanted = {t.symbol: t for t in targets}
+        stale = set(broker.stale_positions(now))
+        closed = 0
+        for symbol in list(broker.positions):
+            if symbol not in prices:
+                continue
+            leaving = symbol not in wanted
+            flipping = (not leaving and
+                        (broker.positions[symbol].lots > 0) != (wanted[symbol].weight > 0))
+            aging = symbol in stale
+            if not (leaving or flipping or aging or state.halted):
+                continue
+            reason = ("no longer in the book" if leaving else
+                      "side flipped" if flipping else
+                      "halted" if state.halted else
+                      f"approaching the {broker.FREE_DAYS}-day financing-free window")
+            pnl, cost = broker.close(symbol, prices[symbol])
+            closed += 1
+            print(f"  closed {symbol:<9} P&L {pnl:>+9.2f}  cost {cost:>6.2f}  ({reason})")
+            journal.record_decision(Decision(
+                bar_utc=bar_utc, symbol=symbol, action="CLOSE", price=prices[symbol],
+                equity=broker.equity, reason=reason, inputs={"pnl": pnl, "cost": cost},
+            ))
+            journal.record_fill(bar_utc, symbol, "CLOSE", 0.0, prices[symbol], cost, "PAPER")
 
         print(f"\n  {'rank':>5} {'symbol':<9} {'weight':>8} {'120d ret':>10} "
               f"{'lots':>10}  status")
@@ -111,6 +151,19 @@ def main() -> int:
 
         placed = refused = 0
         for t in targets:
+            if t.symbol in broker.positions:
+                # Already held on the correct side and inside the free window.
+                print(f"  {t.rank:>5} {t.symbol:<9} {t.weight:>+8.3f} "
+                      f"{t.trailing_return:>+9.1%} {broker.positions[t.symbol].lots:>+10.2f}"
+                      f"  held")
+                continue
+            if state.halted:
+                refused += 1
+                journal.record_decision(Decision(
+                    bar_utc=bar_utc, symbol=t.symbol, action="HALTED", rank=t.rank,
+                    weight=t.weight, reason=state.halt_reason, inputs={},
+                ))
+                continue
             spec = specs[t.symbol]
             price = prices[t.symbol]
             # Stop distance from the market's own volatility, not a fixed number.
@@ -154,15 +207,22 @@ def main() -> int:
                 ))
 
         marked = broker.mark_to_market(prices)
+        peak = max(peak, marked)
+        drawdown = max(0.0, (1 - marked / peak) * 100.0) if peak > 0 else 0.0
+
+        paper_state.save(STATE, broker, peak)
         journal.record_equity(
-            bar_utc=bar_utc, equity=marked, peak_equity=max(CAPITAL, marked),
-            drawdown_pct=max(0.0, (1 - marked / max(CAPITAL, marked)) * 100.0),
+            bar_utc=bar_utc, equity=marked, peak_equity=peak, drawdown_pct=drawdown,
             open_legs=len(broker.positions), halted=state.halted,
-            note=f"placed={placed} refused={refused}",
+            note=f"placed={placed} closed={closed} refused={refused}",
         )
 
-        print(f"\n  placed {placed} · refused {refused} · "
-              f"costs paid ${broker.costs_paid:.2f} · equity ${marked:,.2f}")
+        pnl_total = marked - CAPITAL
+        print(f"\n  placed {placed} · closed {closed} · refused {refused}")
+        print(f"  equity ${marked:,.2f}  ({pnl_total:+,.2f} since inception, "
+              f"{pnl_total / CAPITAL:+.2%})")
+        print(f"  realised ${broker.realised:+,.2f} · costs paid ${broker.costs_paid:,.2f} · "
+              f"drawdown {drawdown:.2f}% of a {risk.MAX_DRAWDOWN_PCT:.0f}% limit")
 
         observations = journal.observation_count()
         needed = prod.MEASURED["years_to_prove"] * 260
