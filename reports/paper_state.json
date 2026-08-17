@@ -1,6 +1,6 @@
 {
-  "costs_paid": 11.192437925600002,
-  "equity": 99988.81556207438,
+  "costs_paid": 15.832265285600002,
+  "equity": 99845.33573471438,
   "peak_equity": 100000.0,
   "positions": {
     "BTCUSD": {
@@ -17,12 +17,12 @@
       "opened_utc": "2026-08-16T07:03:06.879905+00:00",
       "symbol": "ETHUSD"
     },
-    "NZDUSD": {
+    "EURUSD": {
       "contract_size": 100000.0,
-      "entry_price": 0.58908,
-      "lots": -0.89,
-      "opened_utc": "2026-08-16T07:03:06.879905+00:00",
-      "symbol": "NZDUSD"
+      "entry_price": 1.1580300000000001,
+      "lots": -0.64,
+      "opened_utc": "2026-08-17T03:17:35.651127+00:00",
+      "symbol": "EURUSD"
     },
     "UKOIL": {
       "contract_size": 1000.0,
@@ -95,6 +95,6 @@
       "symbol": "XPTUSD"
     }
   },
-  "realised": 0.008000000000174623,
-  "saved_utc": "2026-08-16T07:03:08+00:00"
+  "realised": -138.83200000000033,
+  "saved_utc": "2026-08-17T03:57:52+00:00"
 }

@@ -4,9 +4,16 @@ Two properties of this module are deliberate and load-bearing:
 
 1. **Attach-only.** ``initialize()`` is called without credentials, so this process
    binds to whichever account the terminal is already logged into. It never calls
-   ``initialize(login=...)``. Three separate bot projects share one MT5 terminal on
-   this machine and a terminal holds exactly one login at a time — whichever process
-   passes credentials last wins, and silently breaks the others.
+   ``initialize(login=...)``. A terminal holds exactly one login at a time —
+   whichever process passes credentials last wins, and silently breaks the others.
+
+   Since 2026-08-17 this project has its own terminal (``GOLDLAB_MT5_PATH``,
+   logged into 472250693 by hand) rather than sharing one. ``path=`` picks a
+   terminal; it does not log anything in, so the property above still holds.
+   ``GOLDLAB_MT5_LOGIN`` is then checked on every connect, because ``path=`` is
+   a hint about what to *launch* and not a guarantee about what answers: a
+   sibling bot on this machine had its terminal exit, silently attached to a
+   different one, and read a foreign account for two hours.
 
 2. **There are no order functions here.** Not stubbed, not disabled — absent. This
    module physically cannot place, modify or close anything.
@@ -15,8 +22,10 @@ Two properties of this module are deliberate and load-bearing:
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import MetaTrader5 as mt5
@@ -123,18 +132,75 @@ class SymbolCosts:
         return (per_night * nights) / self.notional_per_lot * 100.0
 
 
-def connect() -> None:
+_env_loaded = False
+
+
+def _load_env_once() -> None:
+    """Read the project's .env, without overriding anything already exported.
+
+    Kept here rather than at import time so that importing this module for its
+    dataclasses has no side effects. Real environment variables win, so a
+    script can still point itself at a different terminal deliberately.
+    """
+    global _env_loaded
+    if _env_loaded:
+        return
+    _env_loaded = True
+    try:
+        from dotenv import load_dotenv
+    except ImportError:  # pragma: no cover - dotenv is optional
+        return
+    root = Path(__file__).resolve().parents[3]
+    env_file = root / ".env"
+    if env_file.exists():
+        load_dotenv(env_file, override=False)
+
+
+def connect(expect_login: int | None = None) -> None:
     """Attach to the already-running, already-logged-in terminal.
 
-    No credentials. If the terminal is not up, this fails loudly rather than
-    launching or logging into anything.
+    Still no credentials — the "never logs in" property above is unchanged.
+    ``GOLDLAB_MT5_PATH`` only chooses *which* terminal to attach to, and a
+    terminal's login is whatever a human set it to. Nothing here can switch an
+    account out from under another project.
+
+    Pointing at a dedicated terminal matters for read-only work too. Attaching
+    to "whatever is running" means reading whatever account that terminal
+    happens to hold, and on this machine those differ in ways that silently
+    corrupt research: one carries XAUUSD at a ~40 point spread, another
+    XAUUSDm at ~190. A cost study that samples the wrong one is measuring a
+    different instrument and will never say so.
+
+    ``expect_login`` is checked when given. A terminal can exit and the library
+    will attach to a different one that happens to be running — that is how a
+    sibling bot on this box spent two hours reading a foreign account.
     """
-    if not mt5.initialize():
+    _load_env_once()
+    path = os.getenv("GOLDLAB_MT5_PATH", "").strip()
+    ok = mt5.initialize(path=path) if path else mt5.initialize()
+    if not ok:
         code, desc = mt5.last_error()
         raise BrokerReadError(
-            f"could not attach to the MT5 terminal ({code}: {desc}). "
-            "Start MetaTrader 5 and log in manually — this module never logs in."
+            f"could not attach to the MT5 terminal ({code}: {desc})"
+            + (f" at {path}" if path else "")
+            + ". Start MetaTrader 5 and log in manually — this module never logs in."
         )
+
+    if expect_login is None:
+        raw = os.getenv("GOLDLAB_MT5_LOGIN", "").strip()
+        expect_login = int(raw) if raw.isdigit() else None
+    if expect_login:
+        info = mt5.account_info()
+        if info is None:
+            mt5.shutdown()
+            raise BrokerReadError("attached, but account_info() returned None")
+        if int(info.login) != expect_login:
+            actual = int(info.login)
+            mt5.shutdown()
+            raise BrokerReadError(
+                f"attached to account {actual}, expected {expect_login}. "
+                "Refusing to read the wrong account's data."
+            )
 
 
 def disconnect() -> None:
