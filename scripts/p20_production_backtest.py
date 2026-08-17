@@ -85,7 +85,35 @@ def run(panel: pd.DataFrame, spec: pd.DataFrame, capital: float) -> dict:
         if not rebalance and not any(i - h["opened_i"] >= ROLL_BARS for h in held.values()):
             continue
 
-        targets = prod.compute_targets(panel.iloc[: i + 1])
+        # Same tradeability predicate the live runner applies, so this measures the
+        # balanced book that actually gets held rather than the tilted one refusals
+        # used to produce. A backtest of a different book is not a backtest.
+        vols_now = vol_panel.iloc[i]
+        inv = {c: 1.0 / float(vols_now[c]) for c in panel.columns
+               if np.isfinite(vols_now[c]) and vols_now[c] > 0}
+        typical = sorted(inv.values(), reverse=True)[: prod.LEGS_PER_SIDE * 2]
+        gross_w = sum(typical) if typical else 1.0
+        st = risk.RiskState(equity=equity, peak_equity=max(capital, equity))
+
+        def _ok(sym, _inv=inv, _g=gross_w, _st=st, _p=prices, _v=vols_now):
+            if sym not in _inv or sym not in spec.index:
+                return False
+            r = spec.loc[sym]
+            try:
+                risk.book_leg_size(
+                    _st, symbol=sym, weight=min(_inv[sym] / _g, prod.MAX_LEG_WEIGHT),
+                    price=float(_p[sym]), annual_vol=float(_v[sym]),
+                    contract_size=float(r["contract_size"]),
+                    volume_min=float(r["min_lot"]), volume_step=float(r["min_lot"]),
+                    volume_max=1e9, n_legs=prod.LEGS_PER_SIDE * 2)
+                return True
+            except risk.RiskRefusal:
+                return False
+
+        try:
+            targets = prod.compute_targets(panel.iloc[: i + 1], tradeable=_ok)
+        except ValueError:
+            continue          # no balanced book possible at this capital on this bar
         wanted = {t.symbol: t for t in targets}
 
         # Close what has left the book, flipped, or aged out of the free window.
@@ -182,7 +210,7 @@ def main() -> int:
     print("  " + "-" * 68)
 
     results = []
-    for capital in (30_000, 100_000, 250_000):
+    for capital in (50_000, 100_000, 250_000, 500_000, 1_000_000):
         r = run(panel, spec, capital)
         results.append(r)
         print(f"  {capital:>9,} {r['sharpe']:>+8.3f} {r['ret']:>+8.2f}% {r['p95']:>7.2f}% "
