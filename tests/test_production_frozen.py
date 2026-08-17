@@ -190,3 +190,54 @@ def test_daily_stop_fires_and_clears_next_day():
 def test_position_count_limit_blocks_a_fourth_market():
     with pytest.raises(risk.RiskRefusal, match="positions already open"):
         _size(_state(open_positions=3))
+
+
+# ------------------------------------------- balance under refusals (2026-08-17)
+
+def test_the_book_stays_balanced_when_legs_are_untradeable():
+    """The first demo run held 5 long and 3 short legs — a directional bet.
+
+    Cross-sectional momentum is market neutral by construction, and that neutrality
+    is the whole reason to prefer it. Refusals must never be allowed to tilt it.
+    """
+    panel = _panel()
+    # Block the instruments that were actually refused on 2026-08-17.
+    blocked = {"XAUUSD", "XAGUSD", "XPTUSD", "XPDUSD", "USOIL", "UKOIL"}
+    targets = prod.compute_targets(panel, tradeable=lambda s: s not in blocked)
+
+    longs = [t for t in targets if t.weight > 0]
+    shorts = [t for t in targets if t.weight < 0]
+    assert len(longs) == len(shorts), (
+        f"book is {len(longs)} long against {len(shorts)} short — that is a "
+        "directional bet, not a market-neutral one"
+    )
+    assert not any(t.symbol in blocked for t in targets), "held an untradeable leg"
+    assert sum(abs(t.weight) for t in targets) == pytest.approx(1.0)
+
+
+def test_substitution_reaches_further_down_the_ranking():
+    """A refused leg is replaced, not left as a hole."""
+    panel = _panel()
+    top_two = [t.symbol for t in prod.compute_targets(panel) if t.weight > 0][:2]
+    targets = prod.compute_targets(panel, tradeable=lambda s: s not in set(top_two))
+
+    held_longs = [t.symbol for t in targets if t.weight > 0]
+    assert not set(top_two) & set(held_longs)
+    assert len(held_longs) == prod.LEGS_PER_SIDE, (
+        "blocking two candidates should pull two substitutes in, not shrink the side"
+    )
+
+
+def test_no_symbol_can_appear_on_both_sides():
+    """With few tradeable markets the two ends of the ranking can meet."""
+    panel = _panel()
+    allowed = set(list(prod.UNIVERSE)[:9])
+    targets = prod.compute_targets(panel, tradeable=lambda s: s in allowed)
+    symbols = [t.symbol for t in targets]
+    assert len(symbols) == len(set(symbols)), "a symbol was held long and short at once"
+
+
+def test_refuses_a_one_sided_book_rather_than_shipping_it():
+    panel = _panel()
+    with pytest.raises(ValueError, match="no balanced book is possible"):
+        prod.compute_targets(panel, tradeable=lambda s: s == prod.UNIVERSE[0])

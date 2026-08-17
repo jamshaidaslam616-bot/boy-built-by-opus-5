@@ -23,6 +23,7 @@ which is the failure mode this entire project was built to avoid.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -98,8 +99,34 @@ class Target:
     trailing_return: float
 
 
-def compute_targets(closes: pd.DataFrame, as_of: pd.Timestamp | None = None) -> list[Target]:
+def compute_targets(
+    closes: pd.DataFrame,
+    as_of: pd.Timestamp | None = None,
+    tradeable: "Callable[[str], bool] | None" = None,
+) -> list[Target]:
     """Rank the universe and return the book to hold over the NEXT bar.
+
+    ``tradeable`` decides which symbols can actually be held at the current account
+    size. It exists because ignoring it produced a book that was not the strategy.
+
+    On 2026-08-17 the first demo run filled 5 long legs and 3 short ones: six legs
+    had been refused because their minimum lot carried more risk than their share of
+    the budget, and the refusals fell mostly on one side. A cross-sectional book is
+    market neutral BY CONSTRUCTION — that neutrality is what removes the common
+    factor and is the entire reason to prefer it over time-series momentum. A book
+    that is net long by two legs is a directional bet nobody sized, tested, or
+    intended.
+
+    So refusals are handled here rather than downstream:
+
+      * **Substitute.** A refused leg is replaced by the next-ranked tradeable
+        instrument on the same side, so breadth is preserved.
+      * **Trim to the smaller side.** If one side still cannot be filled, the other
+        is cut to match. A narrower balanced book beats a wider unbalanced one,
+        because the width was never the point — the balance was.
+
+    Neither mechanism relaxes a risk limit. They change which instruments are held,
+    not how much risk is taken.
 
     ``closes`` must be a panel of daily closes indexed by timestamp, one column per
     symbol, with no data after ``as_of``. The caller is responsible for that; this
@@ -128,7 +155,38 @@ def compute_targets(closes: pd.DataFrame, as_of: pd.Timestamp | None = None) -> 
         )
 
     ranked = trailing[usable].sort_values(ascending=False)
-    longs, shorts = ranked.index[:LEGS_PER_SIDE], ranked.index[-LEGS_PER_SIDE:]
+
+    if tradeable is None:
+        longs = list(ranked.index[:LEGS_PER_SIDE])
+        shorts = list(ranked.index[-LEGS_PER_SIDE:])
+    else:
+        # Walk down from the strongest and up from the weakest, skipping anything
+        # that cannot be held, until each side has LEGS_PER_SIDE or the ranking is
+        # exhausted from that end.
+        longs, shorts = [], []
+        for symbol in ranked.index:
+            if len(longs) >= LEGS_PER_SIDE:
+                break
+            if tradeable(symbol):
+                longs.append(symbol)
+        for symbol in reversed(ranked.index):
+            if len(shorts) >= LEGS_PER_SIDE:
+                break
+            if symbol in longs:
+                break  # the two ends have met; no symbol may be on both sides
+            if tradeable(symbol):
+                shorts.append(symbol)
+
+        # Trim to the smaller side. Balance matters more than breadth here.
+        n = min(len(longs), len(shorts))
+        if n == 0:
+            raise ValueError(
+                "no balanced book is possible: "
+                f"{len(longs)} tradeable long candidates, {len(shorts)} short. "
+                "Refusing to hold a one-sided book, which would be a directional bet "
+                "this strategy was never tested as."
+            )
+        longs, shorts = longs[:n], shorts[:n]
 
     raw: dict[str, float] = {}
     for i, symbol in enumerate(longs):

@@ -66,7 +66,50 @@ def main() -> int:
             return 1
 
         bar_utc = panel.index[-1]
-        targets = prod.compute_targets(panel)
+
+        # Decide tradeability BEFORE ranking, so a leg that cannot be held is
+        # substituted rather than leaving a hole. The first demo run skipped this and
+        # produced a 5-long / 3-short book — a directional bet, not the strategy.
+        equity_now = acct.equity
+
+        # Weights are proportional to 1/volatility and then normalised, so a volatile
+        # market gets a SMALL weight. Checking tradeability at a uniform 1/14 weight
+        # therefore over-estimates what a volatile symbol would receive — it passes
+        # the check and then fails at sizing, which is exactly what happened on the
+        # second demo run. The predicate has to ask the same question the sizer will.
+        vols = {
+            s: float(panel[s].pct_change().rolling(prod.VOL_LOOKBACK_BARS).std().iloc[-1])
+               * (252 ** 0.5)
+            for s in prod.UNIVERSE if s in panel.columns
+        }
+        inverse = {s: 1.0 / v for s, v in vols.items() if v > 0}
+        # Approximate the normalisation over a typical 14-leg book rather than the
+        # whole universe: the book only ever holds 14 of the 25.
+        typical = sorted(inverse.values(), reverse=True)[: prod.LEGS_PER_SIDE * 2]
+        gross = sum(typical) if typical else 1.0
+
+        def is_tradeable(symbol: str) -> bool:
+            spec = specs.get(symbol)
+            if spec is None or symbol not in prices or symbol not in inverse:
+                return False
+            weight = min(inverse[symbol] / gross, prod.MAX_LEG_WEIGHT)
+            try:
+                risk.book_leg_size(
+                    risk.RiskState(equity=equity_now, peak_equity=equity_now),
+                    symbol=symbol, weight=weight,
+                    price=prices[symbol], annual_vol=vols[symbol],
+                    contract_size=spec["contract_size"], volume_min=spec["volume_min"],
+                    volume_step=spec["volume_step"], volume_max=spec["volume_max"],
+                    n_legs=prod.LEGS_PER_SIDE * 2,
+                )
+                return True
+            except risk.RiskRefusal:
+                return False
+
+        targets = prod.compute_targets(panel, tradeable=is_tradeable)
+        n_side = sum(1 for t in targets if t.weight > 0)
+        print(f"  book: {n_side} long / {len(targets) - n_side} short "
+              f"(balanced by construction)")
         wanted = {t.symbol: t for t in targets}
 
         # The broker is the truth. Local files are not consulted for what we hold.
