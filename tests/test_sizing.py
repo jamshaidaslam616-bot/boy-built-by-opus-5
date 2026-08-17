@@ -79,7 +79,7 @@ def test_a_tighter_halt_never_permits_a_bigger_position():
 
 def test_live_halt_is_the_owner_authorised_figure():
     """Guards against the limit being edited without the owner deciding to."""
-    assert LIVE_HALT_PCT == 20.0, (
-        "the live halt is owner-set. It was raised from 10% to 20% on 2026-08-10 with "
+    assert LIVE_HALT_PCT == 25.0, (
+        "the live halt is owner-set. It was raised to 25% on 2026-08-17 with "
         "explicit authorisation. Changing it again requires the owner, not a code edit."
     )

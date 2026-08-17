@@ -24,7 +24,7 @@ from .metrics import Performance, max_drawdown_pct, summarise
 from .returns import CostModel, strategy_returns, vol_target
 
 # Owner-set, 2026-08-10. The live halt. Not to be raised without the owner saying so.
-LIVE_HALT_PCT = 20.0
+LIVE_HALT_PCT = 25.0
 
 # Blocks average one month so the trend persistence that actually creates drawdowns
 # survives the resampling. Day-by-day resampling would destroy it and understate risk.

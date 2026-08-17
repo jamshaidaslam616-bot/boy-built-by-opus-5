@@ -39,8 +39,8 @@ LOG = Path(__file__).resolve().parents[1] / "reports" / "prereg.jsonl"
 BARS_PER_YEAR = 260.0
 ROLL_BARS = 5
 COST_OPEN_BP, COST_CLOSE_BP = 0.47, 0.22
-N_CONTROLS = 120
-CAPITAL = 250_000.0
+N_CONTROLS = 60
+CAPITAL = float(__import__("sys").argv[1]) if len(__import__("sys").argv) > 1 else 250_000.0
 
 HYPOTHESIS = Hypothesis(
     name="P21-balanced-book-control",

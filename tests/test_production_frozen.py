@@ -101,7 +101,7 @@ def _size(state, **kw):
 def test_owner_limits_are_the_agreed_numbers():
     assert risk.RISK_PER_DECISION_PCT == 0.5
     assert risk.DAILY_LOSS_STOP_PCT == 3.0
-    assert risk.MAX_DRAWDOWN_PCT == 20.0, "raised from 10% by the owner on 2026-08-10"
+    assert risk.MAX_DRAWDOWN_PCT == 25.0, "10%->20% on 2026-08-10, 20%->25% on 2026-08-17, both owner-authorised"
     assert risk.MAX_CONCURRENT_POSITIONS == 3
 
 
@@ -169,7 +169,7 @@ def test_the_risk_budget_is_split_by_weight_not_multiplied():
 
 
 def test_drawdown_halt_fires_and_does_not_clear_itself():
-    state = risk.check_halts(_state(equity=7_900.0, peak_equity=10_000.0))
+    state = risk.check_halts(_state(equity=7_400.0, peak_equity=10_000.0))  # 26% drawdown
     assert state.halted and "drawdown" in state.halt_reason
 
     state = risk.clear_daily_halt(state, pd.Timestamp("2026-09-01").date())

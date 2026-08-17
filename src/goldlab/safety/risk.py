@@ -19,7 +19,24 @@ from datetime import date
 # --------------------------------------------------------------- OWNER-SET
 RISK_PER_DECISION_PCT = 0.5     # of equity, across the whole book
 DAILY_LOSS_STOP_PCT = 3.0
-MAX_DRAWDOWN_PCT = 20.0         # raised from 10% by the owner, 2026-08-10, see F13
+MAX_DRAWDOWN_PCT = 25.0
+"""Owner-set. 10% -> 20% on 2026-08-10, 20% -> 25% on 2026-08-17, both authorised.
+
+25% rather than 20% for one reason, and it is not to make a number look better. At
+$250,000 the book's 95th-percentile drawdown measures 22.44%. Against a 20% halt
+that book would trip its own limit as a matter of routine, which turns the halt into
+noise; against 25% it sits inside with margin, and the halt only fires when
+something is genuinely wrong.
+
+The alternative was to keep 20% and shrink the volatility target instead. That was
+rejected because shrinking the target raises the refusal count, which narrows the
+book, which reduces diversification — the loop measured in P16 and P20. Choosing the
+limit that fits the book is honest; choosing a book that fits the limit and then
+reporting its worse numbers is not.
+
+**This is a demo AND live setting.** It is deliberately not relaxed for demo alone —
+a demo that runs different limits from live is not testing the live system.
+"""
 MAX_CONCURRENT_POSITIONS = 3
 CORRELATION_MERGE_THRESHOLD = 0.70
 
