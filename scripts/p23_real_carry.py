@@ -40,13 +40,20 @@ BARS_PER_YEAR = 260.0
 REBAL = 5
 VOL_LB = 60
 
-# FRED 3-month interbank rates, one per currency. These are market rates, not the
-# broker's, and they are what the carry literature actually uses.
+# BIS central bank policy rates, one per currency. FRED and the ECB's own API both
+# refuse this host, while BIS, CFTC and Yahoo answer normally — so the block is
+# per-source, not a network fault, and BIS carries exactly the series needed.
+#
+# Policy rates rather than interbank rates. They are what a central bank sets, they
+# are published monthly for every country here, and the differential between two of
+# them IS the carry the literature trades. Interbank rates would be marginally
+# closer to what a trader actually earns; policy rates are what is reachable, and
+# the difference between the two is far smaller than the differentials being ranked.
+BIS_URL = ("https://stats.bis.org/api/v1/data/BIS,WS_CBPOL,1.0/M.{area}"
+           "?format=csv&startPeriod=2014-01")
 RATES = {
-    "USD": "IR3TIB01USM156N", "EUR": "IR3TIB01EZM156N", "JPY": "IR3TIB01JPM156N",
-    "GBP": "IR3TIB01GBM156N", "CHF": "IR3TIB01CHM156N", "CAD": "IR3TIB01CAM156N",
-    "AUD": "IR3TIB01AUM156N", "NZD": "IR3TIB01NZM156N", "NOK": "IR3TIB01NOM156N",
-    "SEK": "IR3TIB01SEM156N", "MXN": "IR3TIB01MXM156N", "PLN": "IR3TIB01PLM156N",
+    "USD": "US", "EUR": "XM", "JPY": "JP", "GBP": "GB", "CHF": "CH", "CAD": "CA",
+    "AUD": "AU", "NZD": "NZ", "NOK": "NO", "SEK": "SE", "MXN": "MX", "PLN": "PL",
 }
 
 # base/quote per symbol. Carry of being LONG = base rate - quote rate.
@@ -70,7 +77,7 @@ HYPOTHESIS = Hypothesis(
                        "pattern — so it should correlate weakly with everything tested so far.",
     pass_criteria={"control_rotation_z": 2.0},
     n_param_combinations=2,
-    data_scope="11 FX pairs with FRED 3-month interbank rates, D1, monthly rates lagged 45 days",
+    data_scope="11 FX pairs with BIS central bank policy rates, D1, monthly rates lagged 45 days",
     predicted_outcome="Genuinely uncertain and the best remaining shot. The effect is real in "
                       "the literature but it has been weak since 2008 — central bank rates "
                       "converged to zero for a decade, which removes the differential the trade "
@@ -81,21 +88,24 @@ HYPOTHESIS = Hypothesis(
 )
 
 
-def fetch_rate(currency: str, series_id: str) -> pd.Series | None:
+def fetch_rate(currency: str, area: str) -> pd.Series | None:
     try:
-        body = _http.get_text(
-            f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}",
-            timeout=30, attempts=3,
-        )
+        body = _http.get_text(BIS_URL.format(area=area), timeout=30, attempts=3)
     except Exception as exc:
-        print(f"    {currency:<4} {series_id:<18} unavailable ({type(exc).__name__})")
+        print(f"    {currency:<4} BIS/{area:<3} unavailable ({type(exc).__name__})")
         return None
     df = pd.read_csv(io.StringIO(body))
-    df.columns = ["date", "value"]
-    df["date"] = pd.to_datetime(df["date"], utc=True)
-    df["value"] = pd.to_numeric(df["value"], errors="coerce")
-    s = df.dropna().set_index("date")["value"]
-    print(f"    {currency:<4} {series_id:<18} {len(s):>4} obs, "
+    if "TIME_PERIOD" not in df.columns or "OBS_VALUE" not in df.columns:
+        print(f"    {currency:<4} BIS/{area:<3} unexpected columns: {list(df.columns)[:4]}")
+        return None
+    df = df[["TIME_PERIOD", "OBS_VALUE"]].dropna()
+    df["TIME_PERIOD"] = pd.to_datetime(df["TIME_PERIOD"], utc=True)
+    df["OBS_VALUE"] = pd.to_numeric(df["OBS_VALUE"], errors="coerce")
+    s = df.dropna().set_index("TIME_PERIOD")["OBS_VALUE"].sort_index()
+    if s.empty:
+        print(f"    {currency:<4} BIS/{area:<3} no observations")
+        return None
+    print(f"    {currency:<4} BIS/{area:<3} {len(s):>4} obs, "
           f"{s.index[-1]:%Y-%m}, latest {s.iloc[-1]:+.2f}%")
     return s
 
